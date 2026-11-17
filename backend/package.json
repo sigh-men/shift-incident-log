@@ -1,0 +1,16 @@
+{
+  "name": "shiftlog-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Self-hosted backend for the Shift & Incident Log (Express + SQLite, replaces Supabase).",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed:demo": "node seed-demo.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}

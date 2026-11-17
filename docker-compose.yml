@@ -1,0 +1,24 @@
+# Shift & Incident Log — single-container stack for Synology Container Manager.
+# One service serves the static PWA, the JSON API, attachments, and SSE realtime.
+#
+# In production a Synology reverse proxy terminates HTTPS
+# (shiftlog.example.org:443 -> localhost:8086).
+
+services:
+  shiftlog:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: shiftlog
+    restart: unless-stopped
+    ports:
+      - "8086:3000"          # host:container — 8086 is the reverse-proxy backend
+    volumes:
+      - ./web:/web:ro        # static frontend (edit + restart, no rebuild)
+      - ./data:/data         # SQLite db + attachments (persisted, backed up nightly)
+    environment:
+      - PORT=3000
+      - WEB_DIR=/web
+      - DATA_DIR=/data
+      - TZ=America/Denver    # facility's local time zone, used when the server auto-stamps log entries
+      # - ML_ENABLED=true    # turn on the on-prem /api/ml scoring routes (also set ML_ENABLED in web/script.js)

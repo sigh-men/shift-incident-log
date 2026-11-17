@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shift & Incident Log</title>
+  <!-- Inter font, self-hosted (was Google Fonts CDN) so the app works fully offline/LAN -->
+  <link rel="stylesheet" href="./vendor/inter.css" />
+  <link rel="stylesheet" href="style.css?v=72" />
+  <!-- PWA: installable + offline-capable -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#2563eb" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Shift Log" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+</head>
+<body>
+
+  <!-- PIN Gate -->
+  <div id="pin-gate">
+    <div class="pin-box">
+      <div class="pin-logo">
+        <svg width="44" height="44" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="44" height="44" rx="12" fill="#2563eb"/>
+          <rect x="14" y="12" width="16" height="20" rx="2" fill="white" fill-opacity=".2"/>
+          <rect x="14" y="12" width="16" height="20" rx="2" stroke="white" stroke-width="1.5"/>
+          <rect x="17" y="18" width="10" height="1.5" rx=".75" fill="white"/>
+          <rect x="17" y="21.5" width="10" height="1.5" rx=".75" fill="white"/>
+          <rect x="17" y="25" width="7" height="1.5" rx=".75" fill="white"/>
+          <rect x="18" y="9" width="8" height="5" rx="2" fill="white" fill-opacity=".9"/>
+          <rect x="20.5" y="8" width="3" height="3" rx="1.5" fill="#2563eb"/>
+        </svg>
+      </div>
+      <h1>Shift & Incident Log</h1>
+      <p>Enter your PIN to continue</p>
+      <input type="password" id="pin-input" maxlength="6" placeholder="••••" autocomplete="off" inputmode="numeric" />
+      <button onclick="checkPin()">Unlock</button>
+      <p id="pin-error" class="error hidden">Incorrect PIN. Try again.</p>
+    </div>
+  </div>
+
+  <!-- Main App -->
+  <div id="app" class="hidden">
+    <div id="idle-warning" class="idle-warning hidden" role="alert">
+      <span>You'll be signed out in <b id="idle-countdown">60</b>s for inactivity. Anything you've typed is saved as a draft.</span>
+      <button type="button" onclick="stayActive()">Stay signed in</button>
+    </div>
+    <header>
+      <div class="header-inner">
+        <div class="brand">
+          <div class="brand-mark">
+            <svg width="28" height="28" viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="44" height="44" rx="10" fill="#2563eb"/>
+              <rect x="14" y="12" width="16" height="20" rx="2" fill="white" fill-opacity=".2"/>
+              <rect x="14" y="12" width="16" height="20" rx="2" stroke="white" stroke-width="1.5"/>
+              <rect x="17" y="18" width="10" height="1.5" rx=".75" fill="white"/>
+              <rect x="17" y="21.5" width="10" height="1.5" rx=".75" fill="white"/>
+              <rect x="17" y="25" width="7" height="1.5" rx=".75" fill="white"/>
+              <rect x="18" y="9" width="8" height="5" rx="2" fill="white" fill-opacity=".9"/>
+              <rect x="20.5" y="8" width="3" height="3" rx="1.5" fill="#2563eb"/>
+            </svg>
+          </div>
+          <div class="brand-text">
+            <h1>Shift & Incident Log</h1>
+          </div>
+        </div>
+        <div class="header-right">
+          <span id="net-status" class="net-status hidden">Offline</span>
+          <span id="pending-badge" class="pending-badge hidden"></span>
+          <div id="user-info" class="user-info hidden">
+            <span id="user-name" class="user-name"></span>
+            <span id="user-role-badge" class="role-badge"></span>
+          </div>
+          <div class="notif-wrap" id="notif-wrap">
+            <button class="notif-bell" id="notif-bell" onclick="toggleNotifPanel()" title="Notifications" aria-label="Notifications">
+              🔔<span id="notif-count" class="notif-count hidden">0</span>
+            </button>
+            <div id="notif-panel" class="notif-panel hidden">
+              <div class="notif-panel-head">
+                <span>Notifications</span>
+                <button class="notif-mark-all" onclick="markAllNotifsRead()">Mark all read</button>
+              </div>
+              <div id="notif-list" class="notif-list"></div>
+            </div>
+          </div>
+          <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode">🌙</button>
+          <button class="logout-btn" onclick="logout()">Sign Out</button>
+        </div>
+      </div>
+      <nav>
+        <button class="tab-btn active" data-tab="submit" onclick="switchTab('submit')">Submit Entry</button>
+        <button class="tab-btn" data-tab="log" onclick="switchTab('log')">View Log <span id="log-unread-badge" class="unread-badge hidden"></span></button>
+        <button class="tab-btn" data-tab="dashboard" onclick="switchTab('dashboard')">Dashboard</button>
+        <button class="tab-btn" data-tab="handoff" onclick="switchTab('handoff')">Handoff <span id="ho-badge" class="unread-badge hidden" title="Handoffs waiting for you to receive"></span></button>
+        <button class="tab-btn" data-tab="warnings" onclick="switchTab('warnings')">Rule Infractions</button>
+      </nav>
+    </header>
+
+    <!-- Submit Tab -->
+    <main id="tab-submit" class="tab-content">
+      <div class="card">
+        <h2>New Log Entry</h2>
+        <form id="entry-form">
+          <div class="form-grid">
+
+            <div class="field">
+              <label for="date">Date</label>
+              <input type="date" id="date" name="date" required />
+            </div>
+
+            <div class="field">
+              <label for="shift">Shift</label>
+              <select id="shift" name="shift" required>
+                <option value="">— Select —</option>
+                <option>Day</option>
+                <option>Evening</option>
+                <option>Overnight</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="time">Time</label>
+              <input type="time" id="time" name="time" required />
+            </div>
+
+            <div class="field">
+              <label for="staff-name">Name</label>
+              <input type="text" id="staff-name" name="staffName" maxlength="60" placeholder="e.g. Jane Smith" autocomplete="off" required />
+            </div>
+
+            <div class="field">
+              <label for="campus">Campus</label>
+              <select id="campus" name="campus" required>
+                <option value="">— Select —</option>
+                <option>North Campus</option>
+                <option>Desert View</option>
+                <option>Riverside</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="event-type">Event Type</label>
+              <select id="event-type" name="eventType" required>
+                <option value="">— Select —</option>
+                <option>Incident</option>
+                <option>Medical</option>
+                <option>Medications</option>
+                <option>Behavioral</option>
+                <option>Maintenance</option>
+                <option>Visitor</option>
+                <option>VW/WW/WU</option>
+                <option>Client Location</option>
+                <option>Client Requests</option>
+                <option>Client Updates</option>
+                <option>BHT Updates</option>
+                <option>Other</option>
+              </select>
+            </div>
+
+            <div class="field full-width">
+              <div class="narrative-label-row">
+                <label for="narrative">Narrative</label>
+                <div class="narrative-label-right">
+                  <button type="button" id="mic-btn" class="mic-btn" onclick="toggleVoice()" title="Voice to text">🎤</button>
+                  <span id="ai-status" class="ai-status ai-offline" title="AI assist runs on this server — nothing leaves the building">
+                    <span class="ai-dot"></span><span class="ai-status-text">AI offline</span>
+                  </span>
+                </div>
+              </div>
+              <textarea id="narrative" name="narrative" rows="4" placeholder="Describe the event in detail..." required></textarea>
+              <span id="voice-preview" class="voice-preview"></span>
+              <!-- ML assist panel — shown while typing, live severity + event suggestion -->
+              <div id="ml-panel" class="ml-panel hidden">
+                <span class="ml-label">AI Assist</span>
+                <span id="ml-sev-pill" class="ml-sev-pill"></span>
+                <span id="ml-ev-chip" class="hidden"></span>
+                <span id="ml-anomaly-flag" class="anomaly-badge hidden" title="This narrative looks unusual compared to historical entries">⚠ Unusual</span>
+                <span id="ml-loading" class="ml-loading hidden">…</span>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="followup">Follow-Up Needed</label>
+              <select id="followup" name="followUpNeeded" required>
+                <option value="">— Select —</option>
+                <option>Yes</option>
+                <option>No</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="followup-notes">Follow-Up Notes / Assigned To</label>
+              <input type="text" id="followup-notes" name="followUpNotes" placeholder="e.g. Assigned to Shift Lead — Jane D." />
+            </div>
+
+            <div class="field full-width">
+              <label for="attach-input">Photos / Documents</label>
+              <input type="file" id="attach-input" multiple accept="image/*,.pdf,.doc,.docx,.txt,.heic" />
+              <span class="muted file-hint">Optional. Attach photos or documents related to this entry.</span>
+            </div>
+
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" id="submit-btn">Submit Entry</button>
+            <span id="draft-note" class="draft-note hidden">
+              <span id="draft-note-text"></span>
+              <button type="button" class="link-btn" onclick="discardDraft()">Discard draft</button>
+            </span>
+          </div>
+
+          <p id="form-status" class="status-msg hidden"></p>
+        </form>
+      </div>
+    </main>
+
+    <!-- Log View Tab -->
+    <main id="tab-log" class="tab-content hidden">
+      <div class="card">
+        <h2>Log Entries</h2>
+
+        <div class="field full-width">
+          <label for="filter-search">Search</label>
+          <input type="text" id="filter-search" placeholder="Search name, narrative, notes…" oninput="applyFilters()" />
+        </div>
+
+        <div class="filters">
+          <div class="field">
+            <label for="filter-campus">Campus</label>
+            <select id="filter-campus" onchange="applyFilters()">
+              <option value="">All Campuses</option>
+              <option>North Campus</option>
+              <option>Desert View</option>
+              <option>Riverside</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="filter-event">Event Type</label>
+            <select id="filter-event" onchange="applyFilters()">
+              <option value="">All Types</option>
+              <option>Incident</option>
+              <option>Medical</option>
+              <option>Medications</option>
+              <option>Behavioral</option>
+              <option>Maintenance</option>
+              <option>Visitor</option>
+              <option>VW/WW/WU</option>
+              <option>Client Location</option>
+              <option>Client Requests</option>
+              <option>Client Updates</option>
+              <option>BHT Updates</option>
+              <option>Other</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="filter-followup">Follow-Up</label>
+            <select id="filter-followup" onchange="applyFilters()">
+              <option value="">All</option>
+              <option value="open">Open</option>
+              <option value="resolved">Resolved</option>
+              <option value="none">Not needed</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="filter-date-from">Date From</label>
+            <input type="date" id="filter-date-from" onchange="applyFilters()" />
+          </div>
+
+          <div class="field">
+            <label for="filter-date-to">Date To</label>
+            <input type="date" id="filter-date-to" onchange="applyFilters()" />
+          </div>
+
+          <div class="filter-actions">
+            <button class="secondary" onclick="clearFilters()">Clear</button>
+            <button class="secondary" id="load-window-btn" onclick="toggleLoadAll()">Load all history</button>
+            <button class="secondary hidden" id="mark-read-btn" onclick="markAllRead()">Mark all as read</button>
+            <button class="secondary admin-only" onclick="openDeletedModal()">Deleted entries</button>
+            <button onclick="exportCsv()">Export CSV</button>
+          </div>
+        </div>
+
+        <div id="load-window-note" class="load-window-note muted"></div>
+        <div id="log-summary" class="log-summary"></div>
+
+        <div id="log-status" class="status-msg"></div>
+        <div id="log-table-wrap">
+          <p class="muted">Loading entries...</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- Dashboard Tab -->
+    <main id="tab-dashboard" class="tab-content hidden">
+      <div class="dash-filters">
+        <label for="dash-range" class="dash-filters-label">Period</label>
+        <select id="dash-range" onchange="onDashRangeChange()">
+          <option value="7">Last 7 days</option>
+          <option value="30">Last 30 days</option>
+          <option value="month">This month</option>
+          <option value="all">All time</option>
+          <option value="custom">Custom…</option>
+        </select>
+        <input type="date" id="dash-from" class="hidden" onchange="onDashCustom()" />
+        <span id="dash-dash" class="hidden">–</span>
+        <input type="date" id="dash-to" class="hidden" onchange="onDashCustom()" />
+      </div>
+      <div id="spike-alerts" class="spike-alerts hidden"></div>
+      <div class="stat-grid" id="stat-grid"></div>
+      <div class="chart-grid">
+        <div class="card chart-card">
+          <h3>Entries by Event Type</h3>
+          <canvas id="chart-event"></canvas>
+        </div>
+        <div class="card chart-card">
+          <h3>Entries by Campus</h3>
+          <canvas id="chart-campus"></canvas>
+        </div>
+        <div class="card chart-card">
+          <h3>Top Contributors</h3>
+          <canvas id="chart-users"></canvas>
+        </div>
+        <div class="card chart-card">
+          <h3>Follow-Ups</h3>
+          <canvas id="chart-followup"></canvas>
+        </div>
+        <div class="card chart-card">
+          <h3>Top Resolvers</h3>
+          <canvas id="chart-resolvers"></canvas>
+        </div>
+        <div class="card chart-card">
+          <h3>Entries by Shift</h3>
+          <canvas id="chart-shift"></canvas>
+        </div>
+        <div class="card chart-card">
+          <h3>Busiest Day of Week</h3>
+          <canvas id="chart-weekday"></canvas>
+        </div>
+        <div class="card chart-card">
+          <h3>Busiest Time of Day</h3>
+          <canvas id="chart-hour"></canvas>
+        </div>
+        <div class="card chart-card chart-card-wide">
+          <h3 id="trend-title">Entries Over Time</h3>
+          <canvas id="chart-trend"></canvas>
+        </div>
+        <div class="card chart-card chart-card-wide">
+          <h3>Busiest Day &times; Time</h3>
+          <div id="heatmap" class="heatmap"></div>
+        </div>
+        <div class="card chart-card chart-card-wide">
+          <h3>Campus Comparison</h3>
+          <canvas id="chart-campus-compare"></canvas>
+        </div>
+        <div class="card chart-card">
+          <h3>Follow-Up Resolution Speed</h3>
+          <canvas id="chart-followup-sla"></canvas>
+          <p id="followup-sla-caption" class="chart-caption"></p>
+        </div>
+        <div class="card chart-card chart-card-wide">
+          <h3 id="event-mix-title">Event Types Over Time</h3>
+          <canvas id="chart-event-mix"></canvas>
+        </div>
+      </div>
+
+      <h2 class="dash-section-title">Rule Infractions</h2>
+      <div class="stat-grid" id="infr-stat-grid"></div>
+      <div class="chart-grid">
+        <div class="card chart-card">
+          <h3>Infractions by Type</h3>
+          <canvas id="chart-infr-type"></canvas>
+        </div>
+        <div class="card chart-card">
+          <h3>Top Rules Broken</h3>
+          <canvas id="chart-infr-rule"></canvas>
+        </div>
+        <div class="card chart-card">
+          <h3>Infractions by Shift</h3>
+          <canvas id="chart-infr-shift"></canvas>
+        </div>
+        <div class="card chart-card">
+          <h3>Infractions by Phase</h3>
+          <canvas id="chart-infr-phase"></canvas>
+        </div>
+        <div class="card chart-card">
+          <h3>Consequences</h3>
+          <canvas id="chart-infr-cons"></canvas>
+        </div>
+        <div class="card chart-card">
+          <h3>Infractions by Campus</h3>
+          <canvas id="chart-infr-campus"></canvas>
+        </div>
+        <div class="card chart-card">
+          <h3>When Infractions Happen</h3>
+          <canvas id="chart-infr-tenure"></canvas>
+          <p class="chart-caption">By days since the client was admitted</p>
+        </div>
+        <div class="card chart-card">
+          <h3>Infractions per Client</h3>
+          <canvas id="chart-infr-repeat"></canvas>
+          <p id="infr-repeat-caption" class="chart-caption"></p>
+        </div>
+        <div class="card chart-card chart-card-wide">
+          <h3 id="infr-trend-title">Infractions Over Time</h3>
+          <canvas id="chart-infr-trend"></canvas>
+        </div>
+        <div class="card chart-card chart-card-wide">
+          <h3>Clients With Active Consequences</h3>
+          <div id="infr-active" class="infr-active"></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Handoff Tab -->
+    <main id="tab-handoff" class="tab-content hidden">
+      <div class="card">
+        <h2>Shift Handoff Summary</h2>
+        <p class="muted handoff-intro">Auto-generate a summary for the next shift: what happened this shift plus every open follow-up that still needs attention.</p>
+
+        <div id="ho-incoming" class="ho-incoming"></div>
+
+        <div class="filters">
+          <div class="field">
+            <label for="ho-campus">Campus</label>
+            <select id="ho-campus" onchange="generateHandoff()">
+              <option value="">All Campuses</option>
+              <option>North Campus</option>
+              <option>Desert View</option>
+              <option>Riverside</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ho-date">Date</label>
+            <input type="date" id="ho-date" onchange="generateHandoff()" />
+          </div>
+          <div class="field">
+            <label for="ho-shift">Shift</label>
+            <select id="ho-shift" onchange="generateHandoff()">
+              <option>Day</option>
+              <option>Evening</option>
+              <option>Overnight</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ho-by">Prepared By</label>
+            <input type="text" id="ho-by" maxlength="60" placeholder="Your name" oninput="generateHandoff()" />
+          </div>
+          <div class="filter-actions">
+            <button class="secondary" onclick="copyHandoff()">Copy</button>
+            <button class="secondary" onclick="printHandoff()">Print</button>
+            <button id="ho-send-btn" onclick="sendHandoff()">Send handoff</button>
+          </div>
+        </div>
+
+        <div id="ho-status" class="ho-status"></div>
+
+        <div id="handoff-output" class="handoff-output"></div>
+      </div>
+
+      <div class="card admin-only">
+        <h3>Handoff log</h3>
+        <p class="muted handoff-intro">Recent handoffs and who received them. "Not received" = nobody acknowledged it within 2 hours.</p>
+        <div id="ho-log" class="ho-log"></div>
+      </div>
+    </main>
+
+    <!-- Warnings Tab -->
+    <main id="tab-warnings" class="tab-content hidden">
+      <div class="card">
+        <div class="warnings-header">
+          <h2>Rule Infractions</h2>
+          <div class="warnings-header-actions">
+            <button onclick="openWarningForm()">＋ New Infraction</button>
+            <button class="secondary" onclick="openRosterModal()">Manage Roster</button>
+            <button class="secondary" onclick="openRulesModal()">Manage Rules</button>
+          </div>
+        </div>
+        <p class="muted warnings-compliance">Client records — <strong>42 CFR Part 2</strong>. Visible to all staff; handle accordingly.</p>
+
+        <!-- New Infraction form opens as a modal — defined outside this card
+             (a backdrop-filtered ancestor breaks position:fixed). See #warning-modal below. -->
+
+        <!-- At-a-glance summary over all infractions -->
+        <div class="stat-grid warn-stats" id="warn-stats"></div>
+
+        <!-- Repeat-pattern callout (hidden when none) -->
+        <div id="warn-watchlist" class="warn-watchlist" hidden></div>
+
+        <!-- Active consequences summary (full outstanding set, overdue/due-soon flagged) -->
+        <div class="warn-active-panel">
+          <h3>Active Consequences</h3>
+          <div id="warn-active" class="infr-active"></div>
+        </div>
+
+        <!-- Browse all infractions -->
+        <div class="warn-section-head">
+          <h3>All Infractions</h3>
+          <span id="warn-count" class="warn-count"></span>
+        </div>
+        <div class="filters warnings-filters">
+          <div class="field field-search">
+            <label for="wf-search">Search</label>
+            <input type="search" id="wf-search" placeholder="Client, rule, narrative, WW#2…" oninput="renderWarningsList()" />
+          </div>
+          <div class="field">
+            <label for="wf-type">Type</label>
+            <select id="wf-type" onchange="renderWarnings()"><option value="">All types</option><option value="VW">VW</option><option value="WW">WW</option><option value="WU">WU</option></select>
+          </div>
+          <div class="field">
+            <label for="wf-status">Status</label>
+            <select id="wf-status" onchange="renderWarnings()">
+              <option value="">All statuses</option>
+              <option value="issued">Issued</option>
+              <option value="consequence_open">Consequence open</option>
+              <option value="completed">Completed</option>
+              <option value="closed">Closed</option>
+              <option value="voided">Voided</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="wf-client">Client</label>
+            <select id="wf-client" onchange="renderWarnings()"><option value="">All clients</option></select>
+          </div>
+          <div class="filter-actions">
+            <button class="secondary" onclick="clearWarningFilters()">Clear</button>
+          </div>
+        </div>
+        <div id="warnings-list"></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Manage roster modal (all staff) -->
+  <!-- New Infraction modal (top-level so position:fixed is relative to the viewport) -->
+  <div id="warning-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeWarningForm()">
+    <div class="modal modal-xwide modal-scroll">
+      <div class="modal-head">
+        <h3>New Infraction</h3>
+        <button type="button" class="modal-close" onclick="closeWarningForm()" aria-label="Close">&times;</button>
+      </div>
+      <div class="edit-grid">
+        <div class="field">
+          <div class="field-label-row">
+            <label for="w-client" class="req">Client</label>
+            <button type="button" class="link-btn" onclick="toggleQuickAddClient()">＋ New client</button>
+          </div>
+          <select id="w-client" onchange="onWarningClientChange()"></select>
+        </div>
+        <div class="field">
+          <label for="w-type" class="req">Type (you choose the level)</label>
+          <select id="w-type" onchange="updateSeqPreview()">
+            <option value="">— Select —</option>
+            <option value="VW">VW — Verbal Warning</option>
+            <option value="WW">WW — Written Warning</option>
+            <option value="WU">WU — Write-Up</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Number (auto)</label>
+          <div id="w-seq-preview" class="seq-preview">—</div>
+        </div>
+        <div class="field">
+          <label for="w-rule" class="req">Rule</label>
+          <select id="w-rule"></select>
+        </div>
+        <div class="field">
+          <label for="w-date" class="req">Date</label>
+          <input type="date" id="w-date" />
+        </div>
+        <div class="field">
+          <label for="w-shift" class="req">Shift</label>
+          <select id="w-shift"><option value="">—</option><option>Day</option><option>Evening</option><option>Overnight</option></select>
+        </div>
+        <div class="field">
+          <label for="w-campus">Campus</label>
+          <select id="w-campus"><option>North Campus</option><option>Desert View</option><option>Riverside</option></select>
+        </div>
+      </div>
+
+      <!-- Inline "add a client to the roster" without leaving the form -->
+      <div id="w-quickclient" class="quick-client" hidden>
+        <div class="quick-client-title">Add a new client to the roster</div>
+        <div class="edit-grid">
+          <div class="field"><label for="qc-name" class="req">Full name</label><input type="text" id="qc-name" maxlength="80" placeholder="Client full name" /></div>
+          <div class="field"><label for="qc-counselor" class="req">Clinician</label><input type="text" id="qc-counselor" maxlength="80" placeholder="assigned counselor" /></div>
+          <div class="field"><label for="qc-phase" class="req">Phase</label><select id="qc-phase"><option value="1">Phase 1</option><option value="2">Phase 2</option></select></div>
+          <div class="field"><label for="qc-campus" class="req">Campus</label><select id="qc-campus"><option value="">— Select —</option><option>North Campus</option><option>Desert View</option><option>Riverside</option></select></div>
+          <div class="field"><label for="qc-admitted" class="req">Admitted</label><input type="date" id="qc-admitted" /></div>
+        </div>
+        <div class="quick-client-actions">
+          <button type="button" class="secondary" onclick="toggleQuickAddClient()">Cancel</button>
+          <button type="button" onclick="quickAddClient()">Add &amp; select</button>
+        </div>
+        <p id="qc-error" class="error hidden"></p>
+      </div>
+
+      <label for="w-narrative" class="req">What happened</label>
+      <textarea id="w-narrative" rows="4" maxlength="4000" placeholder="Describe what happened — the rule picklist above is what makes it countable."></textarea>
+      <div class="edit-grid">
+        <div class="field">
+          <label for="w-cons-type">Consequence</label>
+          <select id="w-cons-type" onchange="onWarnConsTypeChange()"><option value="none">None</option><option value="paper">Paper</option><option value="chores">Chores</option><option value="therapeutic">Therapeutic Consequence</option></select>
+        </div>
+        <div class="field">
+          <label for="w-cons-due" id="w-cons-due-label">Consequence due</label>
+          <input type="date" id="w-cons-due" />
+        </div>
+        <div class="field">
+          <label for="w-initials">Your Name</label>
+          <input type="text" id="w-initials" maxlength="60" placeholder="e.g. Jane Smith" />
+        </div>
+      </div>
+      <div id="w-cons-detail-wrap" hidden>
+        <label for="w-cons-detail" id="w-cons-detail-label" class="req">Paper topic</label>
+        <input type="text" id="w-cons-detail" maxlength="300" placeholder="Topic for a paper consequence (used in the printed write-up)" />
+      </div>
+      <p class="muted stub-note">Standard chore &amp; paper wording is filled in automatically on the printed write-up. For a paper or therapeutic consequence, add the detail above.</p>
+      <div class="modal-actions">
+        <button class="secondary" onclick="closeWarningForm()">Cancel</button>
+        <button onclick="submitWarning()">Save Infraction</button>
+      </div>
+      <p id="w-error" class="error hidden"></p>
+      <div id="w-history" class="warning-history"></div>
+    </div>
+  </div>
+
+  <div id="roster-modal" class="modal-overlay hidden">
+    <div class="modal modal-xwide">
+      <h3>Manage Roster</h3>
+      <p class="muted stub-note">Standalone roster (census sync is a later step).</p>
+      <div class="edit-grid">
+        <div class="field"><label for="rc-name" class="req">Full name</label><input type="text" id="rc-name" maxlength="80" /></div>
+        <div class="field"><label for="rc-counselor" class="req">Clinician</label><input type="text" id="rc-counselor" maxlength="80" placeholder="assigned counselor" /></div>
+        <div class="field"><label for="rc-phase" class="req">Phase</label><select id="rc-phase"><option value="1">Phase 1</option><option value="2">Phase 2</option></select></div>
+        <div class="field"><label for="rc-campus" class="req">Campus</label><select id="rc-campus"><option value="">— Select —</option><option>North Campus</option><option>Desert View</option><option>Riverside</option></select></div>
+        <div class="field"><label for="rc-admitted" class="req">Admitted</label><input type="date" id="rc-admitted" /></div>
+      </div>
+      <div class="modal-actions">
+        <button class="secondary" onclick="closeRosterModal()">Close</button>
+        <button onclick="addClient()">Add Client</button>
+      </div>
+      <p id="rc-error" class="error hidden"></p>
+      <div class="roster-search-row">
+        <input type="search" id="roster-search" placeholder="Search a client by name or clinician…" oninput="filterRosterList()" />
+      </div>
+      <div id="roster-list" class="mini-list"></div>
+    </div>
+  </div>
+
+  <!-- Edit a roster profile (opens over Manage Roster) -->
+  <div id="client-edit-modal" class="modal-overlay hidden">
+    <div class="modal modal-wide">
+      <h3>Edit Client</h3>
+      <p class="muted" id="ce-context"></p>
+      <div class="edit-grid">
+        <div class="field"><label for="ce-name" class="req">Full name</label><input type="text" id="ce-name" maxlength="80" /></div>
+        <div class="field"><label for="ce-counselor" class="req">Clinician</label><input type="text" id="ce-counselor" maxlength="80" placeholder="assigned counselor" /></div>
+        <div class="field"><label for="ce-phase">Phase</label><select id="ce-phase"><option value="1">Phase 1</option><option value="2">Phase 2</option></select></div>
+        <div class="field"><label for="ce-campus" class="req">Campus</label><select id="ce-campus"><option>North Campus</option><option>Desert View</option><option>Riverside</option></select></div>
+        <div class="field"><label for="ce-admitted" class="req">Admitted</label><input type="date" id="ce-admitted" /></div>
+        <div class="field"><label for="ce-code">Client ID <span class="muted">(EHR, optional)</span></label><input type="text" id="ce-code" maxlength="40" /></div>
+        <div class="field hidden" id="ce-discharged-field"><label for="ce-discharged">Discharged</label><input type="date" id="ce-discharged" /></div>
+      </div>
+      <p class="muted ce-note">Name and clinician changes also show on this client's existing infractions.</p>
+      <p id="ce-error" class="error hidden"></p>
+      <div class="modal-actions">
+        <button class="secondary" onclick="closeClientEditModal()">Cancel</button>
+        <button onclick="confirmClientEdit()">Save changes</button>
+      </div>
+      <div id="ce-history" class="ce-history"></div>
+    </div>
+  </div>
+
+  <!-- Manage rule catalog modal (all staff) -->
+  <div id="rules-modal" class="modal-overlay hidden">
+    <div class="modal modal-xwide">
+      <h3>Manage Rule Catalog</h3>
+      <p class="muted stub-note">Draft wording — final rule list pending. Editing here needs no code deploy.</p>
+      <div class="edit-grid">
+        <div class="field"><label for="rl-label">Rule label</label><input type="text" id="rl-label" maxlength="80" /></div>
+        <div class="field"><label for="rl-phase">Phase</label><select id="rl-phase"><option value="both">Both</option><option value="PH1">PH1</option><option value="PH2">PH2</option></select></div>
+        <div class="field"><label for="rl-sort">Sort</label><input type="number" id="rl-sort" value="100" /></div>
+      </div>
+      <div class="modal-actions">
+        <button class="secondary" onclick="closeRulesModal()">Close</button>
+        <button onclick="addRule()">Add Rule</button>
+      </div>
+      <p id="rl-error" class="error hidden"></p>
+      <div id="rules-list" class="mini-list"></div>
+    </div>
+  </div>
+
+  <!-- Resolve follow-up modal -->
+  <div id="resolve-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h3>Resolve Follow-Up</h3>
+      <p class="muted" id="resolve-context"></p>
+      <label for="resolve-name">Resolved by</label>
+      <input type="text" id="resolve-name" maxlength="60" placeholder="Your name" />
+      <label for="resolve-notes">What was done / outcome</label>
+      <textarea id="resolve-notes" rows="3" maxlength="500" placeholder="Describe how this was followed up and what was resolved…"></textarea>
+      <div class="modal-actions">
+        <button class="secondary" onclick="closeResolveModal()">Cancel</button>
+        <button onclick="confirmResolve()">Mark Resolved</button>
+      </div>
+      <p id="resolve-error" class="error hidden"></p>
+    </div>
+  </div>
+
+  <!-- Edit entry modal -->
+  <div id="edit-modal" class="modal-overlay hidden">
+    <div class="modal modal-wide">
+      <h3>Edit Entry</h3>
+      <p class="muted" id="edit-context"></p>
+      <div class="edit-grid">
+        <div class="field"><label for="edit-date">Date</label><input type="date" id="edit-date" /></div>
+        <div class="field"><label for="edit-shift">Shift</label><select id="edit-shift"></select></div>
+        <div class="field"><label for="edit-time">Time</label><input type="time" id="edit-time" /></div>
+        <div class="field"><label for="edit-campus">Campus</label><select id="edit-campus"></select></div>
+        <div class="field"><label for="edit-event">Event Type</label><select id="edit-event"></select></div>
+        <div class="field"><label for="edit-followup">Follow-Up Needed</label><select id="edit-followup"></select></div>
+      </div>
+      <label for="edit-narrative">Narrative</label>
+      <textarea id="edit-narrative" rows="4" maxlength="4000"></textarea>
+      <label for="edit-followup-notes">Follow-Up Notes / Assigned To</label>
+      <input type="text" id="edit-followup-notes" maxlength="200" />
+      <div class="modal-actions">
+        <button class="secondary" onclick="closeEditModal()">Cancel</button>
+        <button onclick="confirmEdit()">Save changes</button>
+      </div>
+      <p id="edit-error" class="error hidden"></p>
+    </div>
+  </div>
+
+  <!-- Edit history modal (admins) -->
+  <div id="history-modal" class="modal-overlay hidden">
+    <div class="modal modal-wide">
+      <h3>Edit History</h3>
+      <div id="history-body" class="history-body"></div>
+      <div class="modal-actions">
+        <button onclick="closeHistory()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Deleted entries modal (admins) -->
+  <div id="deleted-modal" class="modal-overlay hidden">
+    <div class="modal modal-wide">
+      <h3>Deleted Entries</h3>
+      <p class="muted">Hidden from the log but retained for records. Restore brings an entry back.</p>
+      <div id="deleted-body" class="history-body"></div>
+      <div class="modal-actions">
+        <button onclick="closeDeletedModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit infraction modal -->
+  <div id="warning-edit-modal" class="modal-overlay hidden">
+    <div class="modal modal-wide">
+      <h3>Edit Infraction</h3>
+      <p class="muted" id="we-context"></p>
+      <div class="edit-grid">
+        <div class="field"><label for="we-due">Consequence due <span class="muted">(extensions)</span></label><input type="date" id="we-due" /></div>
+        <div class="field"><label for="we-cons-type">Consequence</label><select id="we-cons-type" onchange="onEditConsTypeChange()"><option value="none">None</option><option value="paper">Paper</option><option value="chores">Chores</option><option value="therapeutic">Therapeutic Consequence</option></select></div>
+        <div class="field"><label for="we-date">Date</label><input type="date" id="we-date" /></div>
+        <div class="field"><label for="we-shift">Shift</label><select id="we-shift"><option value="">—</option><option>Day</option><option>Evening</option><option>Overnight</option></select></div>
+        <div class="field"><label for="we-rule">Rule</label><select id="we-rule"></select></div>
+      </div>
+      <div id="we-cons-detail-wrap" hidden>
+        <label for="we-cons-detail" id="we-cons-detail-label">Paper topic</label>
+        <input type="text" id="we-cons-detail" maxlength="300" placeholder="Topic for a paper consequence" />
+      </div>
+      <label for="we-narrative">What happened</label>
+      <textarea id="we-narrative" rows="3" maxlength="4000"></textarea>
+      <div class="modal-actions">
+        <button class="secondary" onclick="closeWarningEditModal()">Cancel</button>
+        <button onclick="confirmWarningEdit()">Save changes</button>
+      </div>
+      <p id="we-error" class="error hidden"></p>
+    </div>
+  </div>
+
+  <!-- Infraction edit history modal (admins) -->
+  <div id="warning-history-modal" class="modal-overlay hidden">
+    <div class="modal modal-wide">
+      <h3>Infraction Edit History</h3>
+      <div id="warning-history-body" class="history-body"></div>
+      <div class="modal-actions">
+        <button onclick="closeWarningHistory()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Realtime "new entry" toast -->
+  <div id="rt-toast" class="rt-toast"></div>
+
+  <!-- Printed write-up target (WW/WU) — only visible when printing -->
+  <div id="print-root"></div>
+
+  <!-- db-shim replaces supabase-js; Chart.js self-hosted (was jsdelivr CDN) -->
+  <script src="./db-shim.js"></script>
+  <script src="./vendor/chart.umd.min.js"></script>
+  <script src="script.js?v=72"></script>
+</body>
+</html>

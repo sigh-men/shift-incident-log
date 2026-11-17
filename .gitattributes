@@ -1,0 +1,8 @@
+# Normalize all text files to LF (these deploy to a Linux NAS; CRLF would break
+# shell scripts and is unnecessary for the web/backend files).
+* text=auto eol=lf
+
+# Binary assets — never touch line endings
+*.woff2 binary
+*.png binary
+*.jpg binary
